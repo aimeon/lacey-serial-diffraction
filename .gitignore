@@ -1,0 +1,12 @@
+.idea/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+.env
+data/
+outputs/
+models/
+/src/otputs_short/
+/src/outputs_short/
+/src/outputs/
