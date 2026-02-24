@@ -13,9 +13,11 @@ from matplotlib.colors import ListedColormap
 img_dir  = "/home/anvy4548/projects/montage_100im_orig/_png"
 gt_dir   = "/home/anvy4548/projects/montage_100im_orig/crystal_masks"
 pred_dir = "/home/anvy4548/projects/montage_100im_orig/masks_IM"
+pred_dir = r"/home/anvy4548/projects/crystal-recognition/test_images/unet20_50/crystal_masks"
+#pred_dir = r"/home/anvy4548/projects/crystal-recognition/test_images/unet20_50_noscaling_inpaint_test_only/crystal_masks"
 
-fname = next(f for f in os.listdir(gt_dir) if f.lower().endswith("99.png"))
-print("Using:", fname)
+#fname = next(f for f in os.listdir(gt_dir) if f.lower().endswith("99.png"))
+#print("Using:", fname)
 
 save_path = None  # e.g. "debug_match.png"
 
@@ -47,120 +49,155 @@ def iou(pred_mask, gt_mask):
 # ===========================
 # Load data
 # ===========================
-img_path  = os.path.join(img_dir, fname)
-gt_path   = os.path.join(gt_dir, fname)
-pred_path = os.path.join(pred_dir, fname)
 
-bg = load_gray(img_path) if os.path.exists(img_path) else None
-gt = load_gt_mask(gt_path)
-pr = load_pred_mask(pred_path)
+gt_files = sorted([f for f in os.listdir(gt_dir) if f.lower().endswith(".png")])
 
-if pr.shape != gt.shape:
-    pr = resize_mask_to(pr, gt.shape)
+TP_tot = FP_tot = FN_tot = 0
 
-gt_lab = label(gt)
-pr_lab = label(pr)
+for fname in gt_files:
+    print("Using:", fname)
+    img_path  = os.path.join(img_dir, fname)
+    gt_path   = os.path.join(gt_dir, fname)
+    pred_path = os.path.join(pred_dir, fname)
 
-gt_regs = regionprops(gt_lab)
-pr_regs = regionprops(pr_lab)
+    if not os.path.exists(pred_path):
+        base, ext = os.path.splitext(fname)
+        pred_name = f"{base}_crystals{ext}"
+        pred_path = os.path.join(pred_dir, pred_name)
 
-# Map GT label -> index
-gt_label_to_index = {r.label: i for i, r in enumerate(gt_regs)}
 
-# ===========================
-# Matching: centroid-in-GT rule
-# ===========================
-matched_gt = set()
-matches = []  # (pred_idx, gt_idx_or_None, IoU)
+    bg = load_gray(img_path) if os.path.exists(img_path) else None
+    gt = load_gt_mask(gt_path)
+    #if not np.any(gt):
+    #    print(f"Skipping {fname} (empty GT)")
+    #    continue
 
-TP = FP = 0
+    pr = load_pred_mask(pred_path)
 
-for pi, pr_reg in enumerate(pr_regs):
-    pred_mask = (pr_lab == pr_reg.label)
+    if pr.shape != gt.shape:
+        pr = resize_mask_to(pr, gt.shape)
 
-    cy, cx = pr_reg.centroid
-    cy, cx = int(round(cy)), int(round(cx))
+    gt_lab = label(gt)
+    pr_lab = label(pr)
 
-    # Out of bounds safety
-    if cy < 0 or cy >= gt_lab.shape[0] or cx < 0 or cx >= gt_lab.shape[1]:
-        FP += 1
-        matches.append((pi, None, 0.0))
-        continue
+    gt_regs = regionprops(gt_lab)
+    pr_regs = regionprops(pr_lab)
 
-    gt_label = gt_lab[cy, cx]
+    # Map GT label -> index
+    gt_label_to_index = {r.label: i for i, r in enumerate(gt_regs)}
 
-    if gt_label > 0:
-        gi = gt_label_to_index[gt_label]
+    # ===========================
+    # Matching: centroid-in-GT rule
+    # ===========================
+    matched_gt = set()
+    matches = []  # (pred_idx, gt_idx_or_None, IoU)
 
-        # enforce 1-to-1
-        if gi in matched_gt:
+    TP = FP = 0
+
+    for pi, pr_reg in enumerate(pr_regs):
+        pred_mask = (pr_lab == pr_reg.label)
+
+        cy, cx = pr_reg.centroid
+        cy, cx = int(round(cy)), int(round(cx))
+
+        # Out of bounds safety
+        if cy < 0 or cy >= gt_lab.shape[0] or cx < 0 or cx >= gt_lab.shape[1]:
             FP += 1
             matches.append((pi, None, 0.0))
+            continue
+
+        gt_label = gt_lab[cy, cx]
+
+        if gt_label > 0:
+            gi = gt_label_to_index[gt_label]
+
+            # enforce 1-to-1
+            if gi in matched_gt:
+                FP += 1
+                matches.append((pi, None, 0.0))
+            else:
+                matched_gt.add(gi)
+                TP += 1
+                gt_mask = (gt_lab == gt_label)
+                matches.append((pi, gi, iou(pred_mask, gt_mask)))
         else:
-            matched_gt.add(gi)
-            TP += 1
-            gt_mask = (gt_lab == gt_label)
-            matches.append((pi, gi, iou(pred_mask, gt_mask)))
+            FP += 1
+            matches.append((pi, None, 0.0))
+
+    FN = len(gt_regs) - len(matched_gt)
+
+    TP_tot += TP
+    FP_tot += FP
+    FN_tot += FN
+
+    # ===========================
+    # Visualization
+    # ===========================
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    if bg is not None:
+        ax.imshow(bg, cmap="gray")
     else:
-        FP += 1
-        matches.append((pi, None, 0.0))
+        ax.imshow(np.zeros_like(gt), cmap="gray")
 
-FN = len(gt_regs) - len(matched_gt)
+    green = ListedColormap([(0, 1, 0, 1)])
+    red = ListedColormap([(1, 0, 0, 1)])
 
-# ===========================
-# Visualization
-# ===========================
-fig, ax = plt.subplots(figsize=(10, 10))
+    gt_b = find_boundaries(gt, mode="outer")
+    pr_b = find_boundaries(pr, mode="outer")
 
-if bg is not None:
-    ax.imshow(bg, cmap="gray")
-else:
-    ax.imshow(np.zeros_like(gt), cmap="gray")
+    # fills
+    ax.imshow(np.ma.masked_where(~gt, gt), cmap=green, alpha=0.15, interpolation="nearest")
+    ax.imshow(np.ma.masked_where(~pr, pr), cmap=red, alpha=0.15, interpolation="nearest")
 
-green = ListedColormap([(0, 1, 0, 1)])
-red   = ListedColormap([(1, 0, 0, 1)])
+    # outlines
+    ax.imshow(np.ma.masked_where(~gt_b, gt_b), cmap=green, alpha=0.9, interpolation="nearest")
+    ax.imshow(np.ma.masked_where(~pr_b, pr_b), cmap=red, alpha=0.9, interpolation="nearest")
 
-gt_b = find_boundaries(gt, mode="outer")
-pr_b = find_boundaries(pr, mode="outer")
+    # label GT
+    for gi, r in enumerate(gt_regs):
+        y, x = r.centroid
+        ax.text(x, y, f"G{gi}", color="lime", fontsize=10, weight="bold")
 
-# fills
-ax.imshow(np.ma.masked_where(~gt, gt), cmap=green, alpha=0.15, interpolation="nearest")
-ax.imshow(np.ma.masked_where(~pr, pr), cmap=red,   alpha=0.15, interpolation="nearest")
+    # label predictions + lines
+    for pi, r in enumerate(pr_regs):
+        y, x = r.centroid
+        ax.text(x, y, f"P{pi}", color="red", fontsize=10, weight="bold")
 
-# outlines
-ax.imshow(np.ma.masked_where(~gt_b, gt_b), cmap=green, alpha=0.9, interpolation="nearest")
-ax.imshow(np.ma.masked_where(~pr_b, pr_b), cmap=red,   alpha=0.9, interpolation="nearest")
+        gi, ov = matches[pi][1], matches[pi][2]
 
-# label GT
-for gi, r in enumerate(gt_regs):
-    y, x = r.centroid
-    ax.text(x, y, f"G{gi}", color="lime", fontsize=10, weight="bold")
+        if gi is not None:
+            gy, gx = gt_regs[gi].centroid
+            ax.plot([x, gx], [y, gy], linewidth=1.5)
+            ax.text((x + gx) / 2, (y + gy) / 2, f"IoU={ov:.2f}", fontsize=9, weight="bold")
+        else:
+            ax.text(x, y + 10, "FP", color="red", fontsize=9)
 
-# label predictions + lines
-for pi, r in enumerate(pr_regs):
-    y, x = r.centroid
-    ax.text(x, y, f"P{pi}", color="red", fontsize=10, weight="bold")
+    ax.set_axis_off()
+    plt.tight_layout()
 
-    gi, ov = matches[pi][1], matches[pi][2]
+    if save_path:
+        plt.savefig(save_path, dpi=200, bbox_inches="tight")
 
-    if gi is not None:
-        gy, gx = gt_regs[gi].centroid
-        ax.plot([x, gx], [y, gy], linewidth=1.5)
-        ax.text((x+gx)/2, (y+gy)/2, f"IoU={ov:.2f}", fontsize=9, weight="bold")
-    else:
-        ax.text(x, y+10, "FP", color="red", fontsize=9)
+    plt.show()
 
-ax.set_axis_off()
-plt.tight_layout()
+    # ===========================
+    # Summary
+    # ===========================
+    print(f"GT objects   : {len(gt_regs)}")
+    print(f"Pred objects : {len(pr_regs)}")
+    print(f"TP={TP}  FP={FP}  FN={FN}")
 
-if save_path:
-    plt.savefig(save_path, dpi=200, bbox_inches="tight")
+    precision = TP / (TP + FP) if (TP + FP) > 0 else 0.0
+    sensitivity = TP / (TP + FN) if (TP + FN) > 0 else 0.0  # aka recall / TPR
 
-plt.show()
+    print(f"Precision    : {precision:.3f}")
+    print(f"Sensitivity  : {sensitivity:.3f}")
 
-# ===========================
-# Summary
-# ===========================
-print(f"GT objects   : {len(gt_regs)}")
-print(f"Pred objects : {len(pr_regs)}")
-print(f"TP={TP}  FP={FP}  FN={FN}")
+precision = TP_tot / (TP_tot + FP_tot) if (TP_tot + FP_tot) > 0 else 0.0
+sensitivity = TP_tot / (TP_tot + FN_tot) if (TP_tot + FN_tot) > 0 else 0.0
+
+print(f"Total TP={TP_tot} FP={FP_tot} FN={FN_tot}")
+print(f"Precision    : {precision:.3f}")
+print(f"Sensitivity  : {sensitivity:.3f}")
+

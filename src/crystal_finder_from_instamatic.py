@@ -144,6 +144,7 @@ def find_crystals(img, spread=20, plot=False, img_return=False, return_mask=Fals
             x, y = np.array([(c.x, c.y) for c in crystals]).T
             ax.scatter(y, x, color='red')
         ax.set_axis_off()
+        fig.tight_layout(pad=0)
         fig.canvas.draw()
         result = np.array(fig.canvas.renderer.buffer_rgba())
 
@@ -194,41 +195,42 @@ if __name__ == "__main__":
     master_csv = os.path.join(coords_dir, "centroids_master.csv")
 
     for img_name in os.listdir(test_images_dir):
-        image_path = os.path.join(test_images_dir, img_name)
+        if img_name.endswith(".png"):
+            image_path = os.path.join(test_images_dir, img_name)
 
-        crystals, result_image, mask = main(
-            image_path,
-            spread=2500,
-            plot=True,
-            img_return=True,
-            return_mask=True
-        )
+            crystals, result_image, mask = main(
+                image_path,
+                spread=2500,
+                plot=True,
+                img_return=True,
+                return_mask=True
+            )
 
-        base_name = os.path.splitext(img_name)[0]
+            base_name = os.path.splitext(img_name)[0]
 
-        #per_image_csv = os.path.join(coords_dir, f"{base_name}_centroids.csv")
-        #write_per_image_csv(crystals, img_name, per_image_csv)
+            #per_image_csv = os.path.join(coords_dir, f"{base_name}_centroids.csv")
+            #write_per_image_csv(crystals, img_name, per_image_csv)
 
-        #append_to_master_csv(crystals, img_name, master_csv)
+            #append_to_master_csv(crystals, img_name, master_csv)
 
-        print(image_path)
+            print(image_path)
 
 
-        # ---- save processed image ----
-        i = 1
-        while os.path.exists(os.path.join(output_dir, f"{base_name}_inst_r101_{i}.png")):
-            i += 1
+            # ---- save processed image ----
+            i = 1
+            while os.path.exists(os.path.join(output_dir, f"{base_name}_inst_r101_{i}.png")):
+                i += 1
 
-        output_path = os.path.join(output_dir, f"{base_name}_inst_r101_{i}.png")
-        Image.fromarray(result_image).save(output_path)
+            output_path = os.path.join(output_dir, f"{base_name}_inst_r101_{i}.png")
+            Image.fromarray(result_image).save(output_path)
 
-        # ---- save mask ----
-        mask_path = os.path.join(mask_dir, f"{base_name}.png")
+            # ---- save mask ----
+            mask_path = os.path.join(mask_dir, f"{base_name}.png")
 
-        # Convert boolean/int mask to 0–255
-        mask_to_save = (mask.astype(np.uint8) * 255)
-        Image.fromarray(mask_to_save).save(mask_path)
+            # Convert boolean/int mask to 0–255
+            mask_to_save = (mask.astype(np.uint8) * 255)
+            Image.fromarray(mask_to_save).save(mask_path)
 
-        print(f"Saved mask to: {mask_path}")
-        print("---" * 10)
+            print(f"Saved mask to: {mask_path}")
+            print("---" * 10)
 
