@@ -20,7 +20,7 @@ out_root = os.path.join(root, new_folder, "sorted_by_recall")
 out_images = os.path.join(out_root, "processed_images_sorted")
 out_metrics = os.path.join(out_root, "grid_metrics_sorted.txt")
 
-# NEW: recall overview outputs
+# recall overview outputs
 out_recall_table = os.path.join(out_root, "recall_across_all_images.tsv")
 out_recall_rank_plot = os.path.join(out_root, "recall_by_rank.png")
 out_recall_hist = os.path.join(out_root, "recall_hist.png")
@@ -34,6 +34,29 @@ skip_missing_results = True
 # How many to print in console for quick view
 print_top_n = 20
 # ------------------------------------------
+
+
+def cm_to_inch(x):
+    return x / 2.54
+
+
+def set_iucr_plot_style():
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "legend.fontsize": 8,
+        "axes.linewidth": 0.6,
+        "xtick.major.width": 0.6,
+        "ytick.major.width": 0.6,
+        "xtick.direction": "out",
+        "ytick.direction": "out",
+        "savefig.bbox": "tight",
+        "savefig.pad_inches": 0.02,
+    })
 
 
 def newest_match(pattern: str):
@@ -53,28 +76,58 @@ def safe_float(x):
 
 
 def save_recall_plots(rows, out_rank_plot, out_hist):
-    # recall-by-rank (after sorting)
+    set_iucr_plot_style()
+
     recalls = [r["recall"] for r in rows]
     ranks = list(range(1, len(recalls) + 1))
 
-    plt.figure()
-    plt.plot(ranks, recalls)
-    plt.xlabel("Rank (by recall)")
-    plt.ylabel("Recall")
-    plt.title("Recall across all images (sorted)")
-    plt.tight_layout()
-    plt.savefig(out_rank_plot, dpi=200)
-    plt.close()
+    fig_w = cm_to_inch(8.85)
 
-    # Histogram of recall
-    plt.figure()
-    plt.hist(recalls, bins=30)
-    plt.xlabel("Recall")
-    plt.ylabel("Count")
-    plt.title("Recall distribution across all images")
-    plt.tight_layout()
-    plt.savefig(out_hist, dpi=200)
-    plt.close()
+    blue = "#298c8c"  # matplotlib default blue
+
+    # ---------- recall by rank ----------
+    fig, ax = plt.subplots(figsize=(fig_w, cm_to_inch(6.0)))
+
+    ax.plot(
+        ranks,
+        recalls,
+        linewidth=1.2,
+        color=blue
+    )
+
+    ax.set_xlabel("Rank by recall")
+    ax.set_ylabel("Recall")
+    ax.set_xlim(1, len(recalls))
+    ax.set_ylim(0, 1.0)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    fig.tight_layout()
+    fig.savefig(out_rank_plot, dpi=600)
+    plt.close(fig)
+
+    # ---------- histogram ----------
+    fig, ax = plt.subplots(figsize=(fig_w, cm_to_inch(6.0)))
+
+    ax.hist(
+        recalls,
+        bins=30,
+        color=blue,
+        edgecolor="black",   # important for print
+        linewidth=0.5
+    )
+
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Count")
+    ax.set_xlim(0, 1.0)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    fig.tight_layout()
+    fig.savefig(out_hist, dpi=600)
+    plt.close(fig)
 
 
 def main():
@@ -98,7 +151,6 @@ def main():
     # SORT BY RECALL
     rows.sort(key=lambda r: r["recall"], reverse=sort_desc)
 
-    # ---- NEW: show recall across all images (console + files) ----
     all_recalls = [r["recall"] for r in rows]
     mean_recall = sum(all_recalls) / len(all_recalls)
     median_recall = stats.median(all_recalls)
@@ -111,7 +163,6 @@ def main():
     print(f"  median  : {median_recall:.6f}")
     print(f"  min/max : {min_recall:.6f} / {max_recall:.6f}")
 
-    # Print quick ranked preview
     print(f"\nTop {min(print_top_n, len(rows))} by recall:")
     for i, r in enumerate(rows[:print_top_n], start=1):
         print(
@@ -126,21 +177,17 @@ def main():
             f"image={os.path.basename(r['image'])}"
         )
 
-    # Save per-image recall table
     with open(out_recall_table, "w", newline="") as f:
         w = csv.writer(f, delimiter="\t")
         w.writerow(["rank", "image", "recall", "IoU"])
         for idx, r in enumerate(rows, start=1):
             w.writerow([idx, r["image"], f"{r['recall']:.6f}", f"{r['IoU']:.6f}"])
 
-    # Save plots
     save_recall_plots(rows, out_recall_rank_plot, out_recall_hist)
     print(f"\nWrote recall table to: {out_recall_table}")
     print(f"Saved plot (recall by rank) to: {out_recall_rank_plot}")
     print(f"Saved plot (recall histogram) to: {out_recall_hist}")
-    # -------------------------------------------------------------
 
-    # Write sorted metrics + copy images (your existing behavior)
     with open(out_metrics, "w") as f:
         f.write("rank\trecall\tIoU\n")
 
