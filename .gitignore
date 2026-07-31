@@ -1,12 +1,22 @@
+# Development environments
 .idea/
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
-.DS_Store
+.venv/
 .env
+
+#Python
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data and generated results
 data/
 outputs/
-models/
+**/outputs/
+**/outputs_short/
 /src/otputs_short/
-/src/outputs_short/
-/src/outputs/
+
+# Operating-system files
+.DS_Store
+Thumbs.db

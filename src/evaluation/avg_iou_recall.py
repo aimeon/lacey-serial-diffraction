@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+"""Calculate mean IoU and recall from a grid-metrics TSV file."""
+
 import csv
 import sys
 import math
 
 def safe_float(x):
+    """Convert a value to a finite float, returning None when invalid."""
     try:
         v = float(x)
         if math.isnan(v) or math.isinf(v):
