@@ -8,7 +8,7 @@ import statistics as stats
 import matplotlib.pyplot as plt
 
 # ----------------- CONFIG -----------------
-new_folder = "unet20_50_noscaling_training_only"  # must match what you used when generating outputs
+new_folder = "unet20_50_noscaling_training_only"
 
 root = "/home/anvy4548/projects/crystal-recognition/test_images"
 metrics_tsv = os.path.join(root, new_folder, "grid_metrics", "grid_metrics.tsv")
@@ -20,7 +20,7 @@ out_root = os.path.join(root, new_folder, "sorted_by_iou")
 out_images = os.path.join(out_root, "processed_images_sorted")
 out_metrics = os.path.join(out_root, "grid_metrics_sorted.txt")
 
-# NEW: IoU overview outputs
+# IoU overview outputs
 out_iou_table = os.path.join(out_root, "iou_across_all_images.tsv")
 out_iou_rank_plot = os.path.join(out_root, "iou_by_rank.png")
 out_iou_hist = os.path.join(out_root, "iou_hist.png")
@@ -33,7 +33,33 @@ skip_missing_results = True
 
 # How many to print in console for quick view
 print_top_n = 20
+
+# Plot color
+blue = "#298c8c"
 # ------------------------------------------
+
+
+def cm_to_inch(x):
+    return x / 2.54
+
+
+def set_iucr_plot_style():
+    """Set matplotlib defaults to better match IUCr artwork guidance."""
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "legend.fontsize": 8,
+        "axes.linewidth": 0.6,
+        "xtick.major.width": 0.6,
+        "ytick.major.width": 0.6,
+        "xtick.direction": "out",
+        "ytick.direction": "out",
+        "savefig.bbox": "tight",
+        "savefig.pad_inches": 0.02,
+    })
 
 
 def newest_match(pattern: str):
@@ -53,28 +79,60 @@ def safe_float(x):
 
 
 def save_iou_plots(rows, out_rank_plot, out_hist):
-    # IoU-by-rank (after sorting)
+    set_iucr_plot_style()
+
     ious = [r["IoU"] for r in rows]
     ranks = list(range(1, len(ious) + 1))
 
-    plt.figure()
-    plt.plot(ranks, ious)
-    plt.xlabel("Rank (by IoU)")
-    plt.ylabel("IoU")
-    plt.title("IoU across all images (sorted)")
-    plt.tight_layout()
-    plt.savefig(out_rank_plot, dpi=200)
-    plt.close()
+    # IUCr single-column width = 8.85 cm
+    fig_w = cm_to_inch(8.85)
 
-    # Histogram of IoU
-    plt.figure()
-    plt.hist(ious, bins=30)
-    plt.xlabel("IoU")
-    plt.ylabel("Count")
-    plt.title("IoU distribution across all images")
-    plt.tight_layout()
-    plt.savefig(out_hist, dpi=200)
-    plt.close()
+    # ---------- IoU by rank ----------
+    fig_h_rank = cm_to_inch(6.0)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h_rank))
+
+    ax.plot(
+        ranks,
+        ious,
+        linestyle="-",
+        linewidth=1.0,
+        color=blue
+    )
+
+    ax.set_xlabel("Rank by IoU")
+    ax.set_ylabel("IoU")
+    ax.set_xlim(1, len(ious))
+    ax.set_ylim(0, 1.0)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    fig.tight_layout()
+    fig.savefig(out_rank_plot, dpi=600)
+    plt.close(fig)
+
+    # ---------- IoU histogram ----------
+    fig_h_hist = cm_to_inch(6.0)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h_hist))
+
+    ax.hist(
+        ious,
+        bins=30,
+        edgecolor="black",
+        linewidth=0.5,
+        color=blue
+    )
+
+    ax.set_xlabel("IoU")
+    ax.set_ylabel("Count")
+    ax.set_xlim(0, 1.0)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    fig.tight_layout()
+    fig.savefig(out_hist, dpi=600)
+    plt.close(fig)
 
 
 def main():
@@ -98,7 +156,7 @@ def main():
     # Sort by IoU
     rows.sort(key=lambda r: r["IoU"], reverse=sort_desc)
 
-    # ---- NEW: show IoU across all images (console + files) ----
+    # Summary stats
     all_ious = [r["IoU"] for r in rows]
     mean_iou = sum(all_ious) / len(all_ious)
     median_iou = stats.median(all_ious)
@@ -111,7 +169,6 @@ def main():
     print(f"  median  : {median_iou:.6f}")
     print(f"  min/max : {min_iou:.6f} / {max_iou:.6f}")
 
-    # Print quick ranked preview
     print(f"\nTop {min(print_top_n, len(rows))} by IoU:")
     for i, r in enumerate(rows[:print_top_n], start=1):
         print(f"  {i:04d}  IoU={r['IoU']:.6f}  recall={r['recall']:.6f}  image={os.path.basename(r['image'])}")
@@ -127,14 +184,13 @@ def main():
         for idx, r in enumerate(rows, start=1):
             w.writerow([idx, r["image"], f"{r['IoU']:.6f}", f"{r['recall']:.6f}"])
 
-    # Save plots
+    # Save publication-style plots
     save_iou_plots(rows, out_iou_rank_plot, out_iou_hist)
     print(f"\nWrote IoU table to: {out_iou_table}")
     print(f"Saved plot (IoU by rank) to: {out_iou_rank_plot}")
     print(f"Saved plot (IoU histogram) to: {out_iou_hist}")
-    # ----------------------------------------------------------
 
-    # Write sorted metrics + copy images (your existing behavior)
+    # Write sorted metrics + copy images
     with open(out_metrics, "w") as f:
         f.write("rank\tIoU\trecall\n")
 

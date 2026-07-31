@@ -12,8 +12,8 @@ from matplotlib.colors import ListedColormap
 # ===========================
 img_dir  = "/home/anvy4548/projects/montage_100im_orig/_png"
 gt_dir   = "/home/anvy4548/projects/montage_100im_orig/crystal_masks"
-pred_dir = "/home/anvy4548/projects/montage_100im_orig/masks_IM"
-pred_dir = r"/home/anvy4548/projects/crystal-recognition/test_images/unet20_50/crystal_masks"
+pred_dir = "/home/anvy4548/projects/crystal-recognition/results_final/intamatic_all_images/masks"
+pred_dir = r"/home/anvy4548/projects/crystal-recognition/results_final/unet20_50_noscaling_crystal_pos_test_only_3/crystal_masks"
 #pred_dir = r"/home/anvy4548/projects/crystal-recognition/test_images/unet20_50_noscaling_inpaint_test_only/crystal_masks"
 
 #fname = next(f for f in os.listdir(gt_dir) if f.lower().endswith("99.png"))
